@@ -1,6 +1,6 @@
 ﻿/*
 CarryTorch
-A Roll20 script that automates lighting and snuffing a torch
+A Roll20 script that automates lighting and snuffing a torch for the 5e Shaped sheet
 
 On Github:	https://github.com/blawson69
 Contact me: https://app.roll20.net/users/1781274/ben-l
@@ -14,7 +14,7 @@ var CarryTorch = CarryTorch || (function () {
 
     //---- INFO ----//
 
-    var version = '1.0',
+    var version = '1.1',
     debugMode = false,
     MARKERS,
     ALT_MARKERS = [{name:'red', tag: 'red', url:"#C91010"}, {name: 'blue', tag: 'blue', url: "#1076C9"}, {name: 'green', tag: 'green', url: "#2FC910"}, {name: 'brown', tag: 'brown', url: "#C97310"}, {name: 'purple', tag: 'purple', url: "#9510C9"}, {name: 'pink', tag: 'pink', url: "#EB75E1"}, {name: 'yellow', tag: 'yellow', url: "#E5EB75"}, {name: 'dead', tag: 'dead', url: "X"}],
@@ -39,11 +39,14 @@ var CarryTorch = CarryTorch || (function () {
 			var d = new Date();
 			showDialog('Debug Mode', 'CarryTorch v' + version + ' loaded at ' + d.toLocaleTimeString() + '<br><a style=\'' + styles.textButton + '\' href="!torch config">Show config</a>', 'GM');
 		}
+
+        if (state['CarryTorch'].torchMarker == 'bogus') commandConfig();
     },
 
     //----- INPUT HANDLER -----//
 
     handleInput = function (msg) {
+        log(msg.content);
         if (msg.type == 'api' && msg.content.startsWith('!torch') && playerIsGM(msg.playerid)) {
             var parms = msg.content.split(/\s+/i);
             if (parms[1]) {
@@ -62,7 +65,7 @@ var CarryTorch = CarryTorch || (function () {
 		}
 
         if (msg.content.search(/\{\{title=Torch\}\}/gi) != -1) {
-            // Create utility Object from 5e Shaped dialog
+            // Create utility Object from 5e Shaped roll template
             var utilObj = {}, components = msg.content.trim().replace(/\}\}\s+\{\{/g, '#').replace(/\{*\}*/g, '');
             components = components.split('#');
             _.each(components, function (x) {
@@ -70,31 +73,52 @@ var CarryTorch = CarryTorch || (function () {
                 utilObj[parts[0]] = parts[1];
             });
 
-            if (utilObj.title.toLowerCase() == 'torch') {
-                var char, char_name = (utilObj.character_name && utilObj.character_name != '') ? utilObj.character_name : '';
-                var chars = findObjs({type: 'character', archived: false});
-                char = _.find(chars, function (char) {
-                    return char.get('name').toLowerCase().search(char_name.toLowerCase()) != -1 && char_name != ''
-                    && _.find(char.get('controlledby').split(), function (x) { return x == msg.playerid; });
-                });
+            // Get character name from roll template
+            var char, char_name = (utilObj.character_name && utilObj.character_name != '') ? utilObj.character_name : '';
+            char = findObjs({type: 'character', name: char_name, archived: false})[0];
 
-                if (char) {
-                    var tokens = findObjs({ _type: 'graphic', _pageid: Campaign().get("playerpageid") });
-                    var token = _.find(tokens, function (t) { return t.get('represents') == char.get('id'); });
-                    if (token) {
-                        if (!_.find(state['CarryTorch'].tokens, function (x) { return x.id == token.get('id'); })) {
-                            state['CarryTorch'].tokens.push({
-                                id: token.get('id'),
-                                light: token.get('light_radius'),
-                                dim: token.get('light_dimradius'),
-                                players: token.get('light_otherplayers'),
-                                angle: token.get('light_angle')
-                            });
-                        }
-
-                        token.set('status_' + state['CarryTorch'].torchMarker, true);
-                        token.set({light_radius: 40, light_dimradius: 20, light_otherplayers: true, light_angle: 360});
+            // Find character's token on the map and light it up
+            if (char) {
+                var tokens = findObjs({ _type: 'graphic', _pageid: Campaign().get("playerpageid") });
+                var token = _.find(tokens, function (t) { return t.get('represents') == char.get('id'); });
+                if (token) {
+                    // Save current settings
+                    if (!_.find(state['CarryTorch'].tokens, function (x) { return x.id == token.get('id'); })) {
+                        state['CarryTorch'].tokens.push({
+                            id: token.get('id'),
+                            light: token.get('light_radius'),
+                            dim: token.get('light_dimradius'),
+                            players: token.get('light_otherplayers'),
+                            angle: token.get('light_angle')
+                        });
                     }
+                    // Set torch settings and add token marker
+                    token.set('status_' + state['CarryTorch'].torchMarker, true);
+                    token.set({light_radius: 40, light_dimradius: 20, light_otherplayers: true, light_angle: 360});
+                }
+            }
+        }
+
+        // Uses Police pops up right after an attempted use. Turn the torch back off if it does
+        if (msg.content.search(/\{\{title=Uses Police\}\}/gi) != -1 && msg.content.search(/use Torch/gi) != -1) {
+            // Get character name from roll template
+            var char, char_name = msg.content.split('=')[2];
+            char_name = char_name.substring(0, char_name.search(' can’t use Torch'));
+            char = findObjs({type: 'character', name: char_name, archived: false})[0];
+
+            if (char) {
+                var tokens = findObjs({ _type: 'graphic', _pageid: Campaign().get("playerpageid") });
+                var token = _.find(tokens, function (t) { return t.get('represents') == char.get('id'); });
+                if (token) {
+                    setTimeout(function () {
+                        var torched = _.find(state['CarryTorch'].tokens, function (x) { return x.id == token.get('id'); });
+                        if (torched) {
+                            token.set('status_' + state['CarryTorch'].torchMarker, false);
+                            token.set({light_radius: torched.light, light_dimradius: torched.dim, light_otherplayers: torched.players, light_angle: torched.angle});
+                            state['CarryTorch'].tokens = _.reject(state['CarryTorch'].tokens, function (x) { return x.id == token.get('id'); });
+                        }
+                    }, 0);
+
                 }
             }
         }
