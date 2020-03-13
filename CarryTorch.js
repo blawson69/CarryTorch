@@ -46,7 +46,6 @@ var CarryTorch = CarryTorch || (function () {
     //----- INPUT HANDLER -----//
 
     handleInput = function (msg) {
-        log(msg.content);
         if (msg.type == 'api' && msg.content.startsWith('!torch') && playerIsGM(msg.playerid)) {
             var parms = msg.content.split(/\s+/i);
             if (parms[1]) {
