@@ -14,10 +14,18 @@ var CarryTorch = CarryTorch || (function () {
 
     //---- INFO ----//
 
-    var version = '1.1',
-    debugMode = false,
+    var version = '1.2',
+    debugMode = true,
     MARKERS,
     ALT_MARKERS = [{name:'red', tag: 'red', url:"#C91010"}, {name: 'blue', tag: 'blue', url: "#1076C9"}, {name: 'green', tag: 'green', url: "#2FC910"}, {name: 'brown', tag: 'brown', url: "#C97310"}, {name: 'purple', tag: 'purple', url: "#9510C9"}, {name: 'pink', tag: 'pink', url: "#EB75E1"}, {name: 'yellow', tag: 'yellow', url: "#E5EB75"}, {name: 'dead', tag: 'dead', url: "X"}],
+    LIGHT_SOURCES = [
+        {name: 'Torch', settings: {light_radius: 40, light_dimradius: 20, light_otherplayers: true, light_angle: 360}},
+        {name: 'Lamp', settings: {light_radius: 45, light_dimradius: 15, light_otherplayers: true, light_angle: 360}},
+        {name: 'Bullseye Lantern', settings: {light_radius: 120, light_dimradius: 60, light_otherplayers: true, light_angle: 53}},
+        {name: 'Hooded Lantern', settings: {light_radius: 60, light_dimradius: 30, light_otherplayers: true, light_angle: 360}},
+        {name: 'Hooded Lantern (hooded)', settings: {light_radius: 10, light_dimradius: 5, light_otherplayers: true, light_angle: 360}},
+        {name: 'Candle', settings: {light_radius: 10, light_dimradius: 5, light_otherplayers: true, light_angle: 360}}
+    ],
     styles = {
         box:  'background-color: #fff; border: 1px solid #000; padding: 8px 10px; border-radius: 6px; margin-left: -40px; margin-right: 0px;',
         title: 'padding: 0 0 10px 0; color: ##591209; font-size: 1.5em; font-weight: bold; font-variant: small-caps; font-family: "Times New Roman",Times,serif;',
@@ -63,7 +71,11 @@ var CarryTorch = CarryTorch || (function () {
             }
 		}
 
-        if (msg.content.search(/\{\{title=Torch\}\}/gi) != -1) {
+        var sources = _.pluck(LIGHT_SOURCES, 'name'),
+        re_light = new RegExp('\{\{title=(' + esRE(_.pluck(LIGHT_SOURCES, 'name').join('|')) + ')\}\}', 'i'),
+        re_douse = new RegExp('use (' + esRE(_.pluck(LIGHT_SOURCES, 'name').join('|')) + ')', 'i');
+
+        if (msg.content.search(re_light) != -1) {
             // Create utility Object from 5e Shaped roll template
             var utilObj = {}, components = msg.content.trim().replace(/\}\}\s+\{\{/g, '#').replace(/\{*\}*/g, '');
             components = components.split('#');
@@ -73,11 +85,12 @@ var CarryTorch = CarryTorch || (function () {
             });
 
             // Get character name from roll template
-            var char, char_name = (utilObj.character_name && utilObj.character_name != '') ? utilObj.character_name : '';
-            char = findObjs({type: 'character', name: char_name, archived: false})[0];
+            var char, char_name = (utilObj.character_name && utilObj.character_name != '') ? utilObj.character_name : '',
+            source = _.find(LIGHT_SOURCES, function (source) { return source.name.toLowerCase() == utilObj.title.toLowerCase(); });
+            char = findObjs({type: 'character', name: utilObj.character_name, archived: false})[0];
 
             // Find character's token on the map and light it up
-            if (char) {
+            if (char && source) {
                 var tokens = findObjs({ _type: 'graphic', _pageid: Campaign().get("playerpageid") });
                 var token = _.find(tokens, function (t) { return t.get('represents') == char.get('id'); });
                 if (token) {
@@ -85,24 +98,26 @@ var CarryTorch = CarryTorch || (function () {
                     if (!_.find(state['CarryTorch'].tokens, function (x) { return x.id == token.get('id'); })) {
                         state['CarryTorch'].tokens.push({
                             id: token.get('id'),
-                            light: token.get('light_radius'),
-                            dim: token.get('light_dimradius'),
-                            players: token.get('light_otherplayers'),
-                            angle: token.get('light_angle')
+                            settings: {
+                                light_radius: token.get('light_radius'),
+                                light_dimradius: token.get('light_dimradius'),
+                                light_otherplayers: token.get('light_otherplayers'),
+                                light_angle: token.get('light_angle')
+                            }
                         });
                     }
                     // Set torch settings and add token marker
+                    token.set(source.settings);
                     token.set('status_' + state['CarryTorch'].torchMarker, true);
-                    token.set({light_radius: 40, light_dimradius: 20, light_otherplayers: true, light_angle: 360});
                 }
             }
         }
 
         // Uses Police pops up right after an attempted use. Turn the torch back off if it does
-        if (msg.content.search(/\{\{title=Uses Police\}\}/gi) != -1 && msg.content.search(/use Torch/gi) != -1) {
+        if (msg.content.search(/\{\{title=Uses Police\}\}/gi) != -1 && msg.content.search(re_douse) != -1) {
             // Get character name from roll template
             var char, char_name = msg.content.split('=')[2];
-            char_name = char_name.substring(0, char_name.search(' can’t use Torch'));
+            char_name = char_name.substring(0, char_name.search(' can’t use'));
             char = findObjs({type: 'character', name: char_name, archived: false})[0];
 
             if (char) {
@@ -113,7 +128,7 @@ var CarryTorch = CarryTorch || (function () {
                         var torched = _.find(state['CarryTorch'].tokens, function (x) { return x.id == token.get('id'); });
                         if (torched) {
                             token.set('status_' + state['CarryTorch'].torchMarker, false);
-                            token.set({light_radius: torched.light, light_dimradius: torched.dim, light_otherplayers: torched.players, light_angle: torched.angle});
+                            token.set(torched.settings);
                             state['CarryTorch'].tokens = _.reject(state['CarryTorch'].tokens, function (x) { return x.id == token.get('id'); });
                         }
                     }, 0);
@@ -215,10 +230,15 @@ var CarryTorch = CarryTorch || (function () {
         return return_marker;
     },
 
+    esRE = function (s) {
+        var escapeForRegexp = /(\\|\/|\[|\]|\(|\)|\{|\}|\?|\+|\*|\.|\^|\$)/g;
+        return s.replace(escapeForRegexp,"\\$1");
+    },
+
     handleTokenChange = function (token) {
         var torched = _.find(state['CarryTorch'].tokens, function (x) { return x.id == token.get('id'); });
         if (torched && !token.get('status_' + state['CarryTorch'].torchMarker)) {
-            token.set({light_radius: torched.light, light_dimradius: torched.dim, light_otherplayers: torched.players, light_angle: torched.angle});
+            token.set(torched.settings);
             state['CarryTorch'].tokens = _.reject(state['CarryTorch'].tokens, function (x) { return x.id == token.get('id'); });
         }
     },
