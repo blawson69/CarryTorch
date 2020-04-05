@@ -10,4 +10,4 @@ CarryTorch listens for players to use a light source from their character's inve
 The light sources CarryTorch looks for are: Torch, Lamp, Candle, Bullseye Lantern, Hooded Lantern. If you add a "Hooded Lantern (hooded)" to inventory, you can use it to toggle the hood with its different effects.
 
 ### Caveats
-The "Character Name on all roll templates" option must be set turned on in order for the script to find the character's token. It is also assumed there will be only one token for each character on the page, and that the token to be affected is on the page with the Players Ribbon. Make sure the token marker you choose is dedicated to this script and not in use by another script that listens for status marker changes.
+The "Character Name on all roll templates" option must be turned on in order for the script to find the character's token. It is also assumed there will be only one token for each character on the page, and that the token to be affected is on the page with the Players Ribbon. Make sure the token marker you choose is dedicated to this script and not in use by another script that listens for status marker changes.
