@@ -1,6 +1,7 @@
 ﻿/*
-CarryTorch
+CarryTorch - UDL version
 A Roll20 script that automates lighting and snuffing a torch for the 5e Shaped sheet
+This script handles both Updated Dynamic Lighting and Legacy Dynamic Lighting.
 
 On Github:	https://github.com/blawson69
 Contact me: https://app.roll20.net/users/1781274/ben-l
@@ -14,18 +15,8 @@ var CarryTorch = CarryTorch || (function () {
 
     //---- INFO ----//
 
-    var version = '1.2',
-    debugMode = false,
-    MARKERS,
-    ALT_MARKERS = [{name:'red', tag: 'red', url:"#C91010"}, {name: 'blue', tag: 'blue', url: "#1076C9"}, {name: 'green', tag: 'green', url: "#2FC910"}, {name: 'brown', tag: 'brown', url: "#C97310"}, {name: 'purple', tag: 'purple', url: "#9510C9"}, {name: 'pink', tag: 'pink', url: "#EB75E1"}, {name: 'yellow', tag: 'yellow', url: "#E5EB75"}, {name: 'dead', tag: 'dead', url: "X"}],
-    LIGHT_SOURCES = [
-        {name: 'Torch', settings: {light_radius: 40, light_dimradius: 20, light_otherplayers: true, light_angle: 360}},
-        {name: 'Lamp', settings: {light_radius: 45, light_dimradius: 15, light_otherplayers: true, light_angle: 360}},
-        {name: 'Bullseye Lantern', settings: {light_radius: 120, light_dimradius: 60, light_otherplayers: true, light_angle: 53}},
-        {name: 'Hooded Lantern', settings: {light_radius: 60, light_dimradius: 30, light_otherplayers: true, light_angle: 360}},
-        {name: 'Hooded Lantern (hooded)', settings: {light_radius: 10, light_dimradius: 5, light_otherplayers: true, light_angle: 360}},
-        {name: 'Candle', settings: {light_radius: 10, light_dimradius: 5, light_otherplayers: true, light_angle: 360}}
-    ],
+    var version = '2.0',
+    debugMode = true,
     styles = {
         box:  'background-color: #fff; border: 1px solid #000; padding: 8px 10px; border-radius: 6px; margin-left: -40px; margin-right: 0px;',
         title: 'padding: 0 0 10px 0; color: ##591209; font-size: 1.5em; font-weight: bold; font-variant: small-caps; font-family: "Times New Roman",Times,serif;',
@@ -35,6 +26,34 @@ var CarryTorch = CarryTorch || (function () {
         code: 'font-family: "Courier New", Courier, monospace; background-color: #ddd; color: #000; padding: 2px 4px;',
         alert: 'color: #C91010; font-size: 1.5em; font-weight: bold; font-variant: small-caps; text-align: center;'
     },
+    MARKERS,
+    ALT_MARKERS = [{name:'red', tag: 'red', url:"#C91010"}, {name: 'blue', tag: 'blue', url: "#1076C9"}, {name: 'green', tag: 'green', url: "#2FC910"}, {name: 'brown', tag: 'brown', url: "#C97310"}, {name: 'purple', tag: 'purple', url: "#9510C9"}, {name: 'pink', tag: 'pink', url: "#EB75E1"}, {name: 'yellow', tag: 'yellow', url: "#E5EB75"}, {name: 'dead', tag: 'dead', url: "X"}],
+    LIGHT_SOURCES = [
+        {name: 'Torch',
+        udl_settings: {emits_bright_light: true, bright_light_distance: 20, emits_low_light: true, low_light_distance: 40},
+        ldl_settings: {light_radius: 40, light_dimradius: 20, light_otherplayers: true, light_angle: 360}},
+
+        {name: 'Lamp',
+        udl_settings: {emits_bright_light: true, bright_light_distance: 15, emits_low_light: true, low_light_distance: 45},
+        ldl_settings: {light_radius: 45, light_dimradius: 15, light_otherplayers: true, light_angle: 360}},
+
+        {name: 'Bullseye Lantern',
+        udl_settings: {emits_bright_light: true, bright_light_distance: 60, emits_low_light: true, low_light_distance: 120},
+        ldl_settings: {light_radius: 120, light_dimradius: 60, light_otherplayers: true, light_angle: 53}},
+
+        {name: 'Hooded Lantern',
+        udl_settings: {emits_bright_light: true, bright_light_distance: 30, emits_low_light: true, low_light_distance: 60},
+        ldl_settings: {light_radius: 60, light_dimradius: 30, light_otherplayers: true, light_angle: 360}},
+
+        {name: 'Hooded Lantern (hooded)',
+        udl_settings: {emits_bright_light: false, bright_light_distance: 0, emits_low_light: true, low_light_distance: 5},
+        ldl_settings: {light_radius: 5, light_dimradius: -5, light_otherplayers: true, light_angle: 360}},
+
+        {name: 'Candle',
+        udl_settings: {emits_bright_light: false, bright_light_distance: 0, emits_low_light: true, low_light_distance: 5},
+        ldl_settings: {light_radius: 5, light_dimradius: -5, light_otherplayers: true, light_angle: 360}}
+    ],
+    UDL_NO_LIGHT = {emits_bright_light: false, bright_light_distance: 0, emits_low_light: false, low_light_distance: 0},
 
     checkInstall = function () {
         if (!_.has(state, 'CarryTorch')) state['CarryTorch'] = state['CarryTorch'] || {};
@@ -73,7 +92,8 @@ var CarryTorch = CarryTorch || (function () {
 
         var sources = _.pluck(LIGHT_SOURCES, 'name'),
         re_light = new RegExp('\{\{title=(' + esRE(_.pluck(LIGHT_SOURCES, 'name').join('|')) + ')\}\}', 'i'),
-        re_douse = new RegExp('use (' + esRE(_.pluck(LIGHT_SOURCES, 'name').join('|')) + ')', 'i');
+        re_douse = new RegExp('use (' + esRE(_.pluck(LIGHT_SOURCES, 'name').join('|')) + ')', 'i'),
+        page = findObjs({type: 'page', _id: Campaign().get("playerpageid")})[0];
 
         if (msg.content.search(re_light) != -1) {
             // Create utility Object from 5e Shaped roll template
@@ -94,7 +114,7 @@ var CarryTorch = CarryTorch || (function () {
                 var tokens = findObjs({ _type: 'graphic', _pageid: Campaign().get("playerpageid") });
                 var token = _.find(tokens, function (t) { return t.get('represents') == char.get('id'); });
                 if (token) {
-                    // Save current settings
+                    // Save current settings (UDL won't care about the settings)
                     if (!_.find(state['CarryTorch'].tokens, function (x) { return x.id == token.get('id'); })) {
                         state['CarryTorch'].tokens.push({
                             id: token.get('id'),
@@ -107,13 +127,14 @@ var CarryTorch = CarryTorch || (function () {
                         });
                     }
                     // Set torch settings and add token marker
-                    token.set(source.settings);
+                    if (page.get('dynamic_lighting_enabled')) token.set(source.udl_settings);
+                    else token.set(source.ldl_settings);
                     token.set('status_' + state['CarryTorch'].torchMarker, true);
                 }
             }
         }
 
-        // Uses Police pops up right after an attempted use. Turn the torch back off if it does
+        // Uses Police pops up right after an attempted use. Turn the light back off if it does
         if (msg.content.search(/\{\{title=Uses Police\}\}/gi) != -1 && msg.content.search(re_douse) != -1) {
             // Get character name from roll template
             var char, char_name = msg.content.split('=')[2];
@@ -128,7 +149,8 @@ var CarryTorch = CarryTorch || (function () {
                         var torched = _.find(state['CarryTorch'].tokens, function (x) { return x.id == token.get('id'); });
                         if (torched) {
                             token.set('status_' + state['CarryTorch'].torchMarker, false);
-                            token.set(torched.settings);
+                            if (page.get('dynamic_lighting_enabled')) token.set(UDL_NO_LIGHT);
+                            else token.set(torched.settings);
                             state['CarryTorch'].tokens = _.reject(state['CarryTorch'].tokens, function (x) { return x.id == token.get('id'); });
                         }
                     }, 0);
@@ -236,9 +258,12 @@ var CarryTorch = CarryTorch || (function () {
     },
 
     handleTokenChange = function (token) {
-        var torched = _.find(state['CarryTorch'].tokens, function (x) { return x.id == token.get('id'); });
+        var torched = _.find(state['CarryTorch'].tokens, function (x) { return x.id == token.get('id'); }),
+        page = findObjs({type: 'page', _id: Campaign().get("playerpageid")})[0];
+
         if (torched && !token.get('status_' + state['CarryTorch'].torchMarker)) {
-            token.set(torched.settings);
+            if (page.get('dynamic_lighting_enabled')) token.set(UDL_NO_LIGHT);
+            else token.set(torched.settings);
             state['CarryTorch'].tokens = _.reject(state['CarryTorch'].tokens, function (x) { return x.id == token.get('id'); });
         }
     },
